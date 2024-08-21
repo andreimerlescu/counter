@@ -1,0 +1,14 @@
+.named.*.counter
+outputs/*
+!outputs/.keep
+bin/*
+!bin/.keep
+.counters/
+.DS_Store
+.log
+*.log
+log/
+logs/
+.idea/
+.vscode/
+._*
