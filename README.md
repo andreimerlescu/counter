@@ -39,6 +39,7 @@ counter -h
 | `COUNTER_NEVER_ADD`      | `<unset>`     | `1`                                                 | Enable negative growth only counters.                             |
 | `COUNTER_NEVER_RESET`    | `<unset>`     | `1`                                                 | Prevent a counter from getting reset.                             |
 | `COUNTER_QUANTITY`       | `<unset>`     | `[0-9]` (valid from math.MinInt64 to math.MaxInt64) | Adjust the quantity to increase/decrease upon -add/-sub requests. | 
+| `COUNTER_ALWAYS_YES`     | `<unset>`     | `1`                                                 | Always pass -yes=true to every counter command.                   |
 
 ## Common Argument Combinations
 
@@ -233,4 +234,204 @@ BenchmarkResolveSymlink-9            	  180133	      6361 ns/op
 PASS
 
 Process finished with the exit code 0
+```
+
+## Try It Out!
+
+If you have `docker` installed, you can follow along with this log file and try out the application for yourself!
+
+```bash
+docker run -it --rm golang:1.23.0 bash
+root@4ce4c1c426ac:/go# go install github.com/andreimerlescu/counter@latest
+go: downloading github.com/andreimerlescu/counter v1.0.2
+root@4ce4c1c426ac:/go# counter -v
+1.0.2
+root@4ce4c1c426ac:/go# counter -env
+COUNTER_DIR=/tmp/.counters
+COUNTER_QUANTITY=1
+COUNTER_USE_FORCE=false
+COUNTER_NEVER_ADD=false
+COUNTER_NEVER_RESET=false
+COUNTER_NEVER_DELETE=false
+COUNTER_NEVER_SET_TO=false
+COUNTER_NEVER_SUBTRACT=false
+root@4ce4c1c426ac:/go# export COUNTER_USE_FORCE=1
+root@4ce4c1c426ac:/go# counter -name subscriptions # does not exist 
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -add # now it exists
+1
+root@4ce4c1c426ac:/go# counter -name subscriptions -add                
+2
+root@4ce4c1c426ac:/go# counter -name subscriptions     
+2
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete
+deleting counter subscriptions (2) when you re-run with -yes
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
+counter subscriptions deleted
+root@4ce4c1c426ac:/go# counter -name subscriptions
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete
+deleting counter subscriptions (0) when you re-run with -yes
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
+Error: remove /tmp/.counters/.named.c17be803540fe11391c1714f.counter: no such file or directory
+counter subscriptions deleted
+root@4ce4c1c426ac:/go# # this is normal, as the counter doesn't exist yet
+root@4ce4c1c426ac:/go# counter -name subscriptions -set 1
+1
+root@4ce4c1c426ac:/go# counter -name subscriptions
+1
+root@4ce4c1c426ac:/go# counter -name subscriptions -reset
+will reset counter subscriptions to 0 after you re-run with -yes
+root@4ce4c1c426ac:/go# counter -name subscriptions -reset -yes
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -set 1000
+1000
+root@4ce4c1c426ac:/go# counter -name subscriptions -add     
+1001
+root@4ce4c1c426ac:/go# counter -name subscriptions -sub
+1000
+root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter 
+1000root@4ce4c1c426ac:/go# 
+root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
+1000
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
+counter subscriptions deleted
+root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
+cat: /tmp/.counters/.named.c17be803540fe11391c1714f.counter: No such file or directory
+root@4ce4c1c426ac:/go# counter -name subscriptions -reset -yes 
+0
+root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
+counter subscriptions deleted
+root@4ce4c1c426ac:/go# counter -env
+COUNTER_USE_FORCE=true
+COUNTER_NEVER_ADD=false
+COUNTER_NEVER_RESET=false
+COUNTER_NEVER_DELETE=false
+COUNTER_NEVER_SET_TO=false
+COUNTER_NEVER_SUBTRACT=false
+COUNTER_DIR=/tmp/.counters
+COUNTER_QUANTITY=1
+root@4ce4c1c426ac:/go# export COUNTER_NEVER_ADD=1
+root@4ce4c1c426ac:/go# counter -name subscriptions             
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -sub
+-1
+root@4ce4c1c426ac:/go# counter -name subscriptions -sub
+-2
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+-2
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+-2
+root@4ce4c1c426ac:/go# unset COUNTER_NEVER_ADD
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+-1
+root@4ce4c1c426ac:/go# counter -name subscriptions -add
+0
+root@4ce4c1c426ac:/go# export COUNTER_NEVER_SUBTRACT=1
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+0
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+0
+root@4ce4c1c426ac:/go# counter -name subscription -add
+1
+root@4ce4c1c426ac:/go# counter -name subscription -add
+2
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+2
+root@4ce4c1c426ac:/go# unset COUNTER_NEVER_SUBTRACK
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+2
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+2
+root@4ce4c1c426ac:/go# unset COUNTER_NEVER_SUBTRACT
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+1
+root@4ce4c1c426ac:/go# counter -name subscription -sub
+0
+root@4ce4c1c426ac:/go# counter -env
+COUNTER_NEVER_DELETE=false
+COUNTER_NEVER_SET_TO=false
+COUNTER_NEVER_SUBTRACT=false
+COUNTER_DIR=/tmp/.counters
+COUNTER_QUANTITY=1
+COUNTER_USE_FORCE=true
+COUNTER_NEVER_ADD=false
+COUNTER_NEVER_RESET=false
+root@4ce4c1c426ac:/go# export COUNTER_NEVER_RESET=1
+root@4ce4c1c426ac:/go# counter subscriptions -set 1000
+0
+root@4ce4c1c426ac:/go# counter -name subscriptions -set 1000
+1000
+root@4ce4c1c426ac:/go# counter -name subscription -reset 
+Error: reset operation is disabled by the environment variable
+root@4ce4c1c426ac:/go# unset COUNTER_NEVER_RESET
+root@4ce4c1c426ac:/go# counter -name subscription        
+0
+root@4ce4c1c426ac:/go# counter -name subscription -reset 
+will reset counter subscription to 0 after you re-run with -yes
+root@4ce4c1c426ac:/go# counter -name subscription -reset -yes
+0
+root@4ce4c1c426ac:/go# counter -name subscription -set 1000  
+1000
+root@4ce4c1c426ac:/go# counter -name subscription          
+1000
+root@4ce4c1c426ac:/go# counter -name subscription -reset -yes
+0
+root@4ce4c1c426ac:/go# export COUNTER_QUANTITY=3
+root@4ce4c1c426ac:/go# counter -name threes -add
+3
+root@4ce4c1c426ac:/go# counter -name threes -add
+6
+root@4ce4c1c426ac:/go# counter -name threes -add
+9
+root@4ce4c1c426ac:/go# counter -name threes -sub
+6
+root@4ce4c1c426ac:/go# counter -name threes -sub
+3
+root@4ce4c1c426ac:/go# counter -name threes -reset -yes
+0
+root@4ce4c1c426ac:/go# counter -name threes -add -q 1  
+3
+root@4ce4c1c426ac:/go# counter -name threes -add -q 1
+6
+root@4ce4c1c426ac:/go# unset COUNTER_QUANTITY
+root@4ce4c1c426ac:/go# counter -name threes          
+6
+root@4ce4c1c426ac:/go# counter -name threes -add -q 1
+7
+root@4ce4c1c426ac:/go# counter -name threes -add -q 2
+9
+root@4ce4c1c426ac:/go# counter -name threes -add -q 3
+12
+root@4ce4c1c426ac:/go# counter -name threes -add -q 6
+18
+root@4ce4c1c426ac:/go# counter -name threes -add -q 9
+27
+root@4ce4c1c426ac:/go# counter -name threes -sub -q 22
+5
+root@4ce4c1c426ac:/go# counter -name threes -reset -yes
+0
+root@4ce4c1c426ac:/go# counter -env
+COUNTER_NEVER_RESET=false
+COUNTER_NEVER_DELETE=false
+COUNTER_NEVER_SET_TO=false
+COUNTER_NEVER_SUBTRACT=false
+COUNTER_DIR=/tmp/.counters
+COUNTER_QUANTITY=1
+COUNTER_USE_FORCE=true
+COUNTER_NEVER_ADD=false
+root@4ce4c1c426ac:/go# export COUNTER_NEVER_DELETE=1
+root@4ce4c1c426ac:/go# counter -name threes -delete -yes
+Error: never delete enabled
+root@4ce4c1c426ac:/go# counter -name threes -delete     
+deleting counter threes (0) when you re-run with -yes
+root@4ce4c1c426ac:/go# counter -name threes        
+0
+root@4ce4c1c426ac:/go# unset COUNTER_NEVER_DELETE
 ```

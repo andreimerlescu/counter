@@ -15,27 +15,49 @@ import (
 	"syscall"
 )
 
-const VERSION = "1.0.2"
+const (
+	VERSION              string = "1.0.3"
+	DefaultCounterFile   string = ""
+	DefaultCounterName   string = ""
+	DefaultCounterDir    string = "/tmp/.counters"
+	DefaultQuantity      int64  = 1
+	DefaultSetTo         int64  = 0
+	DefaultShowVersion   bool   = false
+	DefaultShowUsage     bool   = false
+	DefaultDoAdd         bool   = false
+	DefaultDoSub         bool   = false
+	DefaultDoDelete      bool   = false
+	DefaultDoReset       bool   = false
+	DefaultUseForce      bool   = false
+	DefaultUseYes        bool   = false
+	DefaultShowEnv       bool   = false
+	DefaultNeverDelete   bool   = false
+	DefaultNeverSubtract bool   = false
+	DefaultNeverReset    bool   = false
+	DefaultNeverAdd      bool   = false
+	DefaultNeverSetTo    bool   = false
+)
 
 var (
-	showVersion   bool
-	quantity      int64
-	doAdd         bool
-	doSub         bool
-	doReset       bool
-	useForce      bool
-	counterFile   string
-	counterName   string
-	counterDir    string
-	doDelete      bool
-	useYes        bool
-	showEnv       bool
-	neverDelete   bool = false
-	neverSubtract      = false
-	neverReset    bool = false
-	neverAdd           = false
-	setTo         int64
-	neverSetTo    bool = false
+	showVersion   bool   = DefaultShowVersion
+	showUsage     bool   = DefaultShowUsage
+	quantity      int64  = DefaultQuantity
+	doAdd         bool   = DefaultDoAdd
+	doSub         bool   = DefaultDoSub
+	doReset       bool   = DefaultDoReset
+	useForce      bool   = DefaultUseForce
+	counterFile   string = DefaultCounterFile
+	counterName   string = DefaultCounterName
+	counterDir    string = DefaultCounterDir
+	doDelete      bool   = DefaultDoDelete
+	useYes        bool   = DefaultUseYes
+	showEnv       bool   = DefaultShowEnv
+	neverDelete   bool   = DefaultNeverDelete
+	neverSubtract        = DefaultNeverSubtract
+	neverReset    bool   = DefaultNeverReset
+	neverAdd             = DefaultNeverAdd
+	setTo         int64  = DefaultSetTo
+	neverSetTo    bool   = DefaultNeverSetTo
 )
 
 var CounterEnv = map[string]interface{}{
@@ -43,6 +65,7 @@ var CounterEnv = map[string]interface{}{
 	"COUNTER_QUANTITY":       &quantity,
 	"COUNTER_USE_FORCE":      &useForce,
 	"COUNTER_NEVER_ADD":      &neverAdd,
+	"COUNTER_ALWAYS_YES":     &useYes,
 	"COUNTER_NEVER_RESET":    &neverReset,
 	"COUNTER_NEVER_DELETE":   &neverDelete,
 	"COUNTER_NEVER_SET_TO":   &neverSetTo,
@@ -77,26 +100,27 @@ func handleEnvironment() {
 
 func main() {
 	// Shorthand
-	flag.BoolVar(&doAdd, "a", false, "add -q=N (1) to the counter")
-	flag.BoolVar(&doSub, "s", false, "subtract -q=N (1) from the counter")
-	flag.Int64Var(&setTo, "S", 0, "set counter to value - 0 value ignores this flag")
-	flag.BoolVar(&doReset, "R", false, "set counter to 0")
-	flag.BoolVar(&doDelete, "D", false, "delete the counter")
-	flag.BoolVar(&useForce, "F", false, "force overwrite")
-	flag.Int64Var(&quantity, "q", 1, "quantity to either add/subtract from counter")
-	flag.BoolVar(&showVersion, "v", false, "show version")
-	flag.StringVar(&counterDir, "d", "/tmp/.counters", "counter directory")
-	flag.StringVar(&counterFile, "f", "/tmp/.counters/default", "counter file name")
-	flag.StringVar(&counterName, "n", "default", "counter name")
+	flag.BoolVar(&doAdd, "a", DefaultDoAdd, "add -q=N (1) to the counter")
+	flag.BoolVar(&doSub, "s", DefaultDoSub, "subtract -q=N (1) from the counter")
+	flag.Int64Var(&setTo, "S", DefaultSetTo, "set counter to value - 0 value ignores this flag")
+	flag.BoolVar(&doReset, "R", DefaultDoReset, "set counter to 0")
+	flag.BoolVar(&doDelete, "D", DefaultDoDelete, "delete the counter")
+	flag.BoolVar(&useForce, "F", DefaultUseForce, "force overwrite")
+	flag.Int64Var(&quantity, "q", DefaultQuantity, "quantity to either add/subtract from counter")
+	flag.BoolVar(&showVersion, "v", DefaultShowVersion, "show version")
+	flag.StringVar(&counterDir, "d", DefaultCounterDir, "counter directory")
+	flag.StringVar(&counterFile, "f", DefaultCounterFile, "counter file name")
+	flag.StringVar(&counterName, "n", DefaultCounterName, "counter name")
 
 	// Longhand
-	flag.BoolVar(&useYes, "yes", useYes, "your response is yes")
 	flag.BoolVar(&doAdd, "add", doAdd, "add -q=N (1) to the counter")
 	flag.BoolVar(&doSub, "sub", doSub, "subtract -q=N (1) from the counter")
 	flag.Int64Var(&setTo, "set", setTo, "set counter to value - 0 value ignores this flag")
-	flag.BoolVar(&useForce, "force", useForce, "force overwrite")
+	flag.BoolVar(&useYes, "yes", useYes, "your response is yes")
 	flag.BoolVar(&doReset, "reset", doReset, "reset the counter")
+	flag.BoolVar(&useForce, "force", useForce, "force overwrite")
 	flag.BoolVar(&doDelete, "delete", doDelete, "remove counter (requires -yes)")
+	flag.BoolVar(&showUsage, "usage", showUsage, "show usage")
 	flag.StringVar(&counterDir, "dir", counterDir, "counter directory")
 	flag.StringVar(&counterName, "name", counterName, "counter name")
 	flag.StringVar(&counterFile, "file", counterFile, "counter file name")
@@ -128,8 +152,81 @@ func main() {
 		os.Exit(0)
 	}
 
-	if len(counterName) == 0 {
-		_, _ = fmt.Fprintf(os.Stderr, "Error: counter name is required\n")
+	if showUsage {
+		fmt.Printf("Usage of counter: %s\n", os.Args[0])
+		fmt.Println("")
+		fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		fmt.Println("+                        [OPTIONS] Globally parsed                                  +")
+		fmt.Println("+-----------------------------------------------------------------------------------+")
+		fmt.Println("+ Argument  | Alternative/Longer | Notes                                            +")
+		fmt.Println("+-----------+--------------------+--------------------------------------------------+")
+		fmt.Println("|   -env    |                    | Show environment variables                       |")
+		fmt.Println("|   -usage  |                    | Show this usage help                             |")
+		fmt.Println("|   -v      | -version           | Show current version                             |")
+		fmt.Println("|   -h      | -help              | Show flag usage help                             |")
+		fmt.Println("-------------------------------------------------------------------------------------")
+		fmt.Println("")
+		fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		fmt.Println("+                      [OPTIONS] Getting to the counter:                            +")
+		fmt.Println("+-----------------------------------------------------------------------------------+")
+		fmt.Println("+ Argument  | Alternative/Longer | Notes                                            +")
+		fmt.Println("+-----------+--------------------+--------------------------------------------------+")
+		fmt.Println("|   -n=     | -name <name>       | Name of the counter                              |")
+		fmt.Println("|   -d=     | -dir <name>        | Directory* to save counters                      |")
+		fmt.Println("|   -f=     | -file <name>       | Counter file path* to file to use as counter     |")
+		fmt.Println("-------------------------------------------------------------------------------------")
+		fmt.Println(" * Applies to relative, absolute or symlink paths")
+		fmt.Println("")
+		fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		fmt.Println("+                        [OPTIONS] Working with counters:                           +")
+		fmt.Println("+-----------------------------------------------------------------------------------+")
+		fmt.Println("+ Argument  | Alternative/Longer | Notes                                            +")
+		fmt.Println("+-----------+--------------------+--------------------------------------------------+")
+		fmt.Println("|   -a      | -add <int64>       | Add -q=N (1) to the counter                      |")
+		fmt.Println("|   -s      | -sub <int64>       | Subtract -q=N (1) from the counter               |")
+		fmt.Println("|   -S=     | -set <int64>       | Set the counter to value -S=0 ignores this flag  |")
+		fmt.Println("|   -R      | -reset             | Reset the counter to 0                           |")
+		fmt.Println("|   -D      | -delete            | Delete the counter                               |")
+		fmt.Println("-------------------------------------------------------------------------------------")
+		fmt.Println("")
+		fmt.Println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+		fmt.Println("+                 Perform destructive actions on counters:                          +")
+		fmt.Println("+ Argument  | Alternative/Longer | Notes                                            +")
+		fmt.Println("+-----------+--------------------+--------------------------------------------------+")
+		fmt.Println("|   -yes    |                    | Confirm destructive actions on counters          |")
+		fmt.Println("-------------------------------------------------------------------------------------")
+		fmt.Println("")
+		fmt.Println("                            REAL WORLD EXAMPLE USAGE                                 ")
+		fmt.Println("+-----------------------------------------------------------------------------------+")
+		fmt.Println("|  $ go install github.com/andreimerlescu/counter@latest                            |")
+		fmt.Println("|  $ export COUNTER_DIR=\"/home/$(whoami)/.counters\"                                 |")
+		fmt.Println("|  $ export COUNTER_USE_FORCE=1                                                     |")
+		fmt.Println("|  $ export COUNTER_ALWAYS_YES=1                                                    |")
+		fmt.Println("|  $ counter -name subscriptions -add                                               |")
+		fmt.Println("|  1                                                                                |")
+		fmt.Println("|  $ counter -name subscriptions                                                    |")
+		fmt.Println("|  1                                                                                |")
+		fmt.Println("|  $ counter -name subscriptions -sub                                               |")
+		fmt.Println("|  0                                                                                |")
+		fmt.Println("|  $ counter -name subscriptions -reset                                             |")
+		fmt.Println("|  0                                                                                |")
+		fmt.Println("|  $ counter -name subscriptions -delete                                            |")
+		fmt.Println("|  counter subscriptions deleted                                                    |")
+		fmt.Println("|  $ counter -name subscriptions                                                    |")
+		fmt.Println("|  0                                                                                |")
+		fmt.Println("|  $ counter -name subscriptions -set 1000                                          |")
+		fmt.Println("|  1000                                                                             |")
+		fmt.Println("|  $ counter -name subscriptions -add                                               |")
+		fmt.Println("|  1001                                                                             |")
+		fmt.Println("|  $ counter -name subscriptions -sub                                               |")
+		fmt.Println("|  1000                                                                             |")
+		fmt.Println("+-----------------------------------------------------------------------------------+")
+		fmt.Println("")
+		os.Exit(0)
+	}
+
+	if strings.EqualFold(counterFile, DefaultCounterFile) && strings.EqualFold(counterName, DefaultCounterName) {
+		_, _ = fmt.Fprintf(os.Stderr, "Error: -name or -file is required\n")
 		os.Exit(1)
 	}
 
@@ -143,7 +240,21 @@ func main() {
 	if resolved, resolveErr := resolveSymlink(counterDir); resolveErr == nil {
 		counterDir = resolved
 	}
-	counterFile = filepath.Join(counterDir, generateCounterFileName(counterName))
+	if counterFile == DefaultCounterFile {
+		if counterName == DefaultCounterName {
+			_, _ = fmt.Fprintf(os.Stderr, "Error: counter name is required\n")
+			os.Exit(1)
+		}
+		counterFile = filepath.Join(counterDir, generateCounterFileName(counterName))
+	} else {
+		if counterName == "" {
+			if counterFile[0] != '/' {
+				counterFile = filepath.Join(counterDir, counterFile)
+			}
+		} else {
+			counterFile = filepath.Join(counterDir, counterName)
+		}
+	}
 	counter, readErr := readCounter(counterFile)
 	if readErr != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", readErr)
@@ -151,12 +262,12 @@ func main() {
 	}
 
 	if doDelete {
-		if !useYes {
-			_, _ = fmt.Fprintf(os.Stderr, "deleting counter %s (%d) when you re-run with -yes\n", counterName, counter)
-			os.Exit(1)
-		}
 		if neverDelete {
 			_, _ = fmt.Fprintf(os.Stderr, "Error: never delete enabled\n")
+			os.Exit(1)
+		}
+		if !useYes {
+			_, _ = fmt.Fprintf(os.Stderr, "deleting counter %s (%d) when you re-run with -yes\n", counterName, counter)
 			os.Exit(1)
 		}
 		_ = unsetImmutable(counterFile)
