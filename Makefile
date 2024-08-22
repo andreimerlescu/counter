@@ -10,7 +10,6 @@ TARGETS := \
 	linux/amd64 \
 	linux/arm64
 
-
 # Default target
 .PHONY: all
 all: prepare $(TARGETS)

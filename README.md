@@ -46,14 +46,18 @@ counter -h
 
 1. Edit your `~/.bashrc` or `~/.zshrc` file to add: 
 
+    ```bash
     export COUNTER_NEVER_RESET=1
     export COUNTER_NEVER_DELETE=1
     export COUNTER_NEVER_SET_TO=1
+    ```
 
 2. Begin interacting with your locked down `counter`:
 
+    ```bash
     { [ -f ~/.bashrc ] && source ~/.bashrc; } || { [ -f ~/.zshrc ] && source ~/.zshrc; }
     counter -h
+    ```
 
 ### Using Counters Commonly
 
