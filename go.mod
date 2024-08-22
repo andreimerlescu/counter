@@ -1,3 +1,3 @@
-module github.com/andreimerlescu/countable
+module github.com/andreimerlescu/counter
 
-go 1.22
+go 1.23
