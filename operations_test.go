@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // TestGenerateCounterFileName tests the generateCounterFileName function
@@ -19,7 +20,7 @@ func TestGenerateCounterFileName(t *testing.T) {
 
 // TestEnsureDir tests the ensureDir function
 func TestEnsureDir(t *testing.T) {
-	tmpDir := t.TempDir() // Create a temporary directory for testing
+	tmpDir := t.TempDir()
 	testDir := filepath.Join(tmpDir, "testDir")
 	if err := ensureDir(testDir, false); err == nil {
 		t.Errorf("Expected error for non-existent directory without force flag, got nil")
@@ -32,68 +33,114 @@ func TestEnsureDir(t *testing.T) {
 	}
 }
 
+// TestCounterJsonOutput tests JSON output functionality
+func TestCounterJsonOutput(t *testing.T) {
+	testCounter := Counter{
+		Value:     42,
+		Path:      "/tmp/test_counter.json",
+		CreatedAt: time.Now(),
+		Cycle:     "daily",
+		CycleIn:   "noon",
+	}
+
+	file, err := os.Create(testCounter.Path)
+	if err != nil {
+		t.Fatalf("Error creating test file: %v", err)
+	}
+	defer os.Remove(testCounter.Path)
+
+	err = writeCounter(testCounter, file)
+	if err != nil {
+		t.Fatalf("Error writing counter to file: %v", err)
+	}
+
+	readCounter, err := readCounter(testCounter.Path)
+	if err != nil {
+		t.Fatalf("Error reading counter from file: %v", err)
+	}
+
+	if readCounter.Value != testCounter.Value || readCounter.Cycle != testCounter.Cycle || readCounter.CycleIn != testCounter.CycleIn {
+		t.Fatalf("Counter mismatch. Got %+v, expected %+v", readCounter, testCounter)
+	}
+
+	outputJson(readCounter)
+}
+
 // TestReadCounter tests the readCounter function
 func TestReadCounter(t *testing.T) {
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "counterFile")
+	testFile := filepath.Join(tmpDir, "counterFile.json")
 	counter, err := readCounter(testFile)
 	if err != nil {
 		t.Errorf("Expected no error for non-existent file, got: %v", err)
 	}
-	if counter != 0 {
-		t.Errorf("Expected counter to be 0 for non-existent file, got %d", counter)
+	if counter.Value != 0 {
+		t.Errorf("Expected counter value to be 0 for non-existent file, got %d", counter.Value)
 	}
-	expectedCounter := int64(42)
+
+	expectedCounter := Counter{
+		Value:     42,
+		Path:      testFile,
+		CreatedAt: time.Now(),
+	}
 	tmpFile, fileErr := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer tmpFile.Close()
 	if fileErr != nil {
 		t.Fatalf("failed to open file: %v", fileErr)
 	}
-	if err := writeCounter(testFile, expectedCounter, tmpFile); err != nil {
+	if err := writeCounter(expectedCounter, tmpFile); err != nil {
 		t.Errorf("Failed to write counter: %v", err)
 	}
 	counter, err = readCounter(testFile)
 	if err != nil {
 		t.Errorf("Failed to read counter: %v", err)
 	}
-	if counter != expectedCounter {
-		t.Errorf("Expected %d, got %d", expectedCounter, counter)
+	if counter.Value != expectedCounter.Value {
+		t.Errorf("Expected %d, got %d", expectedCounter.Value, counter.Value)
 	}
 }
 
 // TestWriteCounter tests the writeCounter function
 func TestWriteCounter(t *testing.T) {
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "counterFile")
-	expectedCounter := int64(123)
+	testFile := filepath.Join(tmpDir, "counterFile.json")
+	expectedCounter := Counter{
+		Value:     123,
+		Path:      testFile,
+		CreatedAt: time.Now(),
+	}
 	tmpFile, fileErr := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer tmpFile.Close()
 	if fileErr != nil {
 		t.Fatalf("failed to open file: %v", fileErr)
 	}
-	if err := writeCounter(testFile, expectedCounter, tmpFile); err != nil {
+	if err := writeCounter(expectedCounter, tmpFile); err != nil {
 		t.Errorf("Failed to write counter: %v", err)
 	}
 	counter, err := readCounter(testFile)
 	if err != nil {
 		t.Errorf("Failed to read counter: %v", err)
 	}
-	if counter != expectedCounter {
-		t.Errorf("Expected %d, got %d", expectedCounter, counter)
+	if counter.Value != expectedCounter.Value {
+		t.Errorf("Expected %d, got %d", expectedCounter.Value, counter.Value)
 	}
 }
 
 // TestSetUnsetImmutable tests the setImmutable and unsetImmutable functions
 func TestSetUnsetImmutable(t *testing.T) {
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "counterFile")
-	expectedCounter := int64(456)
+	testFile := filepath.Join(tmpDir, "counterFile.json")
+	expectedCounter := Counter{
+		Value:     456,
+		Path:      testFile,
+		CreatedAt: time.Now(),
+	}
 	tmpFile, fileErr := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer tmpFile.Close()
 	if fileErr != nil {
 		t.Fatalf("failed to open file: %v", fileErr)
 	}
-	if err := writeCounter(testFile, expectedCounter, tmpFile); err != nil {
+	if err := writeCounter(expectedCounter, tmpFile); err != nil {
 		t.Errorf("Failed to write counter: %v", err)
 	}
 	if err := setImmutable(testFile); err != nil {
@@ -120,8 +167,8 @@ func BenchmarkWriteCounter(b *testing.B) {
 	defer tmpFile.Close()
 
 	for i := 0; i < b.N; i++ {
-		counter := int64(i)
-		err := writeCounter(filePath, counter, tmpFile)
+		counter := Counter{Value: int64(i), Path: filePath, CreatedAt: time.Now()}
+		err := writeCounter(counter, tmpFile)
 		if err != nil {
 			b.Fatalf("failed to write counter: %v", err)
 		}
@@ -137,13 +184,17 @@ func BenchmarkReadCounter(b *testing.B) {
 	defer os.RemoveAll(dir)
 
 	filePath := filepath.Join(dir, "counter_test_file"+strconv.Itoa(b.N))
-	initialCounter := int64(12345)
+	initialCounter := Counter{
+		Value:     12345,
+		Path:      filePath,
+		CreatedAt: time.Now(),
+	}
 	tmpFile, fileErr := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	defer tmpFile.Close()
 	if fileErr != nil {
 		b.Fatalf("failed to open file: %v", fileErr)
 	}
-	err = writeCounter(filePath, initialCounter, tmpFile)
+	err = writeCounter(initialCounter, tmpFile)
 	if err != nil {
 		b.Fatalf("failed to write initial counter: %v", err)
 	}
