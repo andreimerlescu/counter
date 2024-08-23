@@ -19,14 +19,19 @@ type Counter struct {
 	DeleteAfter time.Time `json:"delete_after"`
 }
 
+type versionData struct {
+    Version string `json:"version"`
+}
+
+var Version = versionData{VERSION}
+
+
 func main() {
 	initArgs()
 
 	if showVersion {
 		if showJson {
-			jsonData, jsonErr := json.Marshal(struct {
-				Version string `json:"version"`
-			}{Version: VERSION})
+			jsonData, jsonErr := json.Marshal(Version)
 			if jsonErr == nil {
 				fmt.Println(string(jsonData))
 				os.Exit(0)
@@ -105,7 +110,11 @@ func main() {
 		}
 		if shouldReset {
 			counter.Value = 0
-		}
+        } else {
+            _, _ = fmt.Fprintf(os.Stderr, "Failed to reset the counter: %#v\nshouldReset: %#v",
+                counter, shouldReset)
+            os.Exit(1)
+        }
 	}
 
 	if doDelete {
@@ -153,9 +162,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cycle != DefaultCycle && cycleIn != DefaultCycleIn && !doAdd && !doSub {
-		fmt.Printf("counter %s will reset %s at %s", counterName, counter.Cycle, counter.CycleIn)
-	} else {
+	if cycle == DefaultCycle || cycleIn == DefaultCycleIn || doAdd || doSub {
 		if !doReset && !doAdd && !doSub && !doDelete && (setTo == 0 || neverSetTo) {
 			if showJson {
 				outputJson(counter)
@@ -222,7 +229,7 @@ func main() {
 	}
 
 	if cycle != DefaultCycle && cycleIn != DefaultCycleIn && !doAdd && !doSub {
-		fmt.Printf("counter %s will reset %s at %s", counterName, counter.Cycle, counter.CycleIn)
+		fmt.Printf("counter %s will reset %s at %s\n", counterName, counter.Cycle, counter.CycleIn)
 	} else {
 		if showJson {
 			outputJson(counter)

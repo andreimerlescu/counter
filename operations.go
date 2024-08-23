@@ -15,31 +15,73 @@ import (
 	"time"
 )
 
+// TODO: rename in GoLand cycleIn to cycleEvery
+
 // shouldResetCounter looks at the counterFile and cycle to signal
 func shouldResetCounter(counterFile, cycle, cycleIn string) (bool, error) {
-	info, err := os.Stat(counterFile)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return true, nil
-		}
-		return false, err
-	}
-	lastModTime := info.ModTime()
-	now := time.Now()
-	switch cycle {
-	case "hourly":
-		return now.Sub(lastModTime).Hours() >= 1, nil
-	case "daily":
-		return now.Sub(lastModTime).Hours() >= 24, nil
-	case "weekly":
-		return now.Sub(lastModTime).Hours() >= 168, nil
-	case "monthly":
-		return now.Sub(lastModTime).Hours() >= 720, nil
-	case "annually":
-		return now.Sub(lastModTime).Hours() >= 8760, nil
-	default:
-		return false, fmt.Errorf("unsupported cycle: %s", cycle)
-	}
+    info, err := os.Stat(counterFile)
+    if err != nil {
+        if errors.Is(err, fs.ErrNotExist) {
+            return true, nil
+        }
+        return false, err
+    }
+    lastModTime := info.ModTime()
+    now := time.Now()
+
+    switch cycle {
+    case "unas":
+        return now.Sub(lastModTime).Minutes() >= 1, nil
+    case "tres":
+        return now.Sub(lastModTime).Minutes() >= 3, nil
+    case "sex":
+        return now.Sub(lastModTime).Minutes() >= 6, nil
+    case "novem":
+        return now.Sub(lastModTime).Minutes() >= 9, nil
+    case "quarhora":
+        return now.Sub(lastModTime).Minutes() >= 15, nil
+    case "semhora":
+        return now.Sub(lastModTime).Minutes() >= 30, nil
+    case "trihora":
+        return now.Sub(lastModTime).Minutes() >= 45, nil
+    case "quinhora":
+        return now.Sub(lastModTime).Minutes() >= 5, nil
+    case "hourly":
+        return now.Sub(lastModTime).Hours() >= 1, nil
+    case "daily":
+        return now.Sub(lastModTime).Hours() >= 24, nil
+    case "weekly":
+        return now.Sub(lastModTime).Hours() >= 24*7, nil
+    case "biweekly":
+        return now.Sub(lastModTime).Hours() >= 24*14, nil
+    case "monthly":
+        return now.Sub(lastModTime).Hours() >= 24*30, nil
+    case "bimonthly":
+        return now.Sub(lastModTime).Hours() >= 24*60, nil
+    case "quarterly":
+        return now.Sub(lastModTime).Hours() >= 24*90, nil
+    case "semiannual":
+        return now.Sub(lastModTime).Hours() >= 24*180, nil
+    case "annually":
+        return now.Sub(lastModTime).Hours() >= 24*365, nil
+    default:
+        var qtyMin int64
+        var qtyErr error
+
+        if cycle == "every" {
+            qtyMin, qtyErr = strconv.ParseInt(cycleIn, 10, 64)
+            if qtyErr != nil {
+                return false, fmt.Errorf("failed to parse cycle every %v minutes due to err %v", cycleIn, qtyErr)
+            }
+        } else {
+            cycleTrimmed := strings.TrimPrefix(strings.TrimSuffix(cycle, "min"), "min")
+            qtyMin, qtyErr = strconv.ParseInt(cycleTrimmed, 10, 64)
+            if qtyErr != nil {
+                return false, fmt.Errorf("failed to parse cycles %v due to err %v", cycle, qtyErr)
+            }
+        }
+        return now.Sub(lastModTime).Minutes() >= float64(qtyMin), nil
+    }
 }
 
 func readCounter(filePath string) (Counter, error) {
