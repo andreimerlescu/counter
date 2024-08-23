@@ -1,6 +1,9 @@
 package main
 
-import "flag"
+import (
+	"flag"
+	"fmt"
+)
 
 type Argument struct {
 	Short    [1]byte
@@ -9,6 +12,25 @@ type Argument struct {
 	Default  interface{}
 	Usage    string
 	Examples map[string]string // map[cmd]stdout = "counter <args>": "<stdout>"
+}
+
+func (arg *Argument) Validate() error {
+	if string(arg.Short[0]) == "" {
+		return fmt.Errorf("short flag is required")
+	}
+	if len(arg.Long) != 0 && (len(arg.Long) < 1 || len(arg.Long) > 36) {
+		return fmt.Errorf("long flag must be 1-36 chars")
+	}
+	if arg.VarTo == nil {
+		return fmt.Errorf("variable to flag is required")
+	}
+	if arg.Default == nil {
+		return fmt.Errorf("default flag is required")
+	}
+	if len(arg.Usage) < len(arg.Long) {
+		return fmt.Errorf("usage must be more than just the name")
+	}
+	return nil
 }
 
 var (
@@ -159,23 +181,36 @@ var args = []*Argument{
 		Default: DefaultDoDeleteCycle,
 		Usage:   "Delete the cycle on the counter",
 	},
+	{
+		Short:   [1]byte{},
+		Long:    "usage",
+		VarTo:   &showUsage,
+		Default: DefaultShowUsage,
+		Usage:   "Learn how to use counter",
+	},
 }
 
 func initArgs() {
 	for _, arg := range args {
 		switch v := arg.Default.(type) {
 		case string:
-			flag.StringVar(arg.VarTo.(*string), string(arg.Short[:]), v, arg.Usage)
+			if arg.Short != [1]byte{} {
+				flag.StringVar(arg.VarTo.(*string), string(arg.Short[:]), v, arg.Usage)
+			}
 			if len(arg.Long) > 0 {
 				flag.StringVar(arg.VarTo.(*string), arg.Long, v, arg.Usage)
 			}
 		case int64:
-			flag.Int64Var(arg.VarTo.(*int64), string(arg.Short[:]), v, arg.Usage)
+			if arg.Short != [1]byte{} {
+				flag.Int64Var(arg.VarTo.(*int64), string(arg.Short[:]), v, arg.Usage)
+			}
 			if len(arg.Long) > 0 {
 				flag.Int64Var(arg.VarTo.(*int64), arg.Long, v, arg.Usage)
 			}
 		case bool:
-			flag.BoolVar(arg.VarTo.(*bool), string(arg.Short[:]), v, arg.Usage)
+			if arg.Short != [1]byte{} {
+				flag.BoolVar(arg.VarTo.(*bool), string(arg.Short[:]), v, arg.Usage)
+			}
 			if len(arg.Long) > 0 {
 				flag.BoolVar(arg.VarTo.(*bool), arg.Long, v, arg.Usage)
 			}

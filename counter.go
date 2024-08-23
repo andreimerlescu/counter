@@ -119,10 +119,9 @@ func main() {
 		}
 		_ = unsetImmutable(counterFile)
 		removeErr := os.Remove(counterFile)
-		if removeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", removeErr)
+		if removeErr == nil {
+			_, _ = fmt.Fprintf(os.Stdout, "counter %s deleted\n", counterName)
 		}
-		_, _ = fmt.Fprintf(os.Stdout, "counter %s deleted\n", counterName)
 		os.Exit(1)
 	}
 
@@ -154,13 +153,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !doReset && !doAdd && !doSub && !doDelete && (setTo == 0 || neverSetTo) {
-		if showJson {
-			outputJson(counter)
-		} else {
-			fmt.Println(counter.Value)
+	if cycle != DefaultCycle && cycleIn != DefaultCycleIn && !doAdd && !doSub {
+		fmt.Printf("counter %s will reset %s at %s", counterName, counter.Cycle, counter.CycleIn)
+	} else {
+		if !doReset && !doAdd && !doSub && !doDelete && (setTo == 0 || neverSetTo) {
+			if showJson {
+				outputJson(counter)
+			} else {
+				fmt.Println(counter.Value)
+			}
+			os.Exit(0)
 		}
-		os.Exit(0)
 	}
 
 	if !doReset && setTo == 0 && doAdd && !neverAdd {
@@ -218,10 +221,14 @@ func main() {
 		_ = os.Chmod(counterFile, info.Mode())
 	}
 
-	if showJson {
-		outputJson(counter)
+	if cycle != DefaultCycle && cycleIn != DefaultCycleIn && !doAdd && !doSub {
+		fmt.Printf("counter %s will reset %s at %s", counterName, counter.Cycle, counter.CycleIn)
 	} else {
-		fmt.Println(counter.Value)
+		if showJson {
+			outputJson(counter)
+		} else {
+			fmt.Println(counter.Value)
+		}
 	}
 
 	os.Exit(0)

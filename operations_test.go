@@ -136,7 +136,9 @@ func TestSetUnsetImmutable(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 	tmpFile, fileErr := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer tmpFile.Close()
+	defer func(tmpFile *os.File) {
+		_ = tmpFile.Close()
+	}(tmpFile)
 	if fileErr != nil {
 		t.Fatalf("failed to open file: %v", fileErr)
 	}
@@ -157,14 +159,18 @@ func BenchmarkWriteCounter(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create benchmark directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(dir)
 	filePath := filepath.Join(dir, "counter_test_file"+strconv.Itoa(b.N))
 
 	tmpFile, fileErr := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if fileErr != nil {
 		b.Fatalf("failed to open file: %v", fileErr)
 	}
-	defer tmpFile.Close()
+	defer func(tmpFile *os.File) {
+		_ = tmpFile.Close()
+	}(tmpFile)
 
 	for i := 0; i < b.N; i++ {
 		counter := Counter{Value: int64(i), Path: filePath, CreatedAt: time.Now()}
@@ -181,7 +187,9 @@ func BenchmarkReadCounter(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create benchmark directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
 
 	filePath := filepath.Join(dir, "counter_test_file"+strconv.Itoa(b.N))
 	initialCounter := Counter{
@@ -190,7 +198,9 @@ func BenchmarkReadCounter(b *testing.B) {
 		CreatedAt: time.Now(),
 	}
 	tmpFile, fileErr := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	defer tmpFile.Close()
+	defer func(tmpFile *os.File) {
+		_ = tmpFile.Close()
+	}(tmpFile)
 	if fileErr != nil {
 		b.Fatalf("failed to open file: %v", fileErr)
 	}
@@ -234,7 +244,9 @@ func BenchmarkResolveSymlink(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create benchmark directory: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
 
 	filePath := filepath.Join(dir, "symlink_test_file")
 	_ = os.WriteFile(filePath, []byte("test"), 0666)
