@@ -1,437 +1,273 @@
 # Counter
 
-This application is designed to be a counter on your linux/unix/macOS filesystem that can be invoked with a bunch
-of custom options. 
+A small command-line counter for Linux, macOS, and other Unix systems. Each
+counter is a plain text file holding one integer, so counters survive reboots,
+can be shared between scripts, and are safe to update from many processes at
+once.
+
+    $ counter -n deploys -add
+    1
+    $ counter -n deploys -add
+    2
+    $ counter -list
+    deploys	2
 
 ## Installation
 
-```bash
-go install github.com/andreimerlescu/counter@latest
-counter -h
-```
+    go install github.com/andreimerlescu/counter@latest
+    counter -h
 
-## Arguments
+Or build from source:
 
-| Argument      | Flag                | Type     | Default                   | Usage                                                            |
-|---------------|---------------------|----------|---------------------------|------------------------------------------------------------------|
-| `doAdd`       | `-a` or `-add`      | `bool`   | `false`                   | add `-q=N` (1) to the counter                                    |
-| `doSub`       | `-s` or `-sub`      | `bool`   | `false`                   | subtract `-q=N` (1) to the counter                               |
-| `setTo`       | `-S` or `-set`      | `int64`  | `0`                       | override counter value if value is not 0 - use reset to set to 0 |
-| `doReset`     | `-R` or `-reset`    | `bool`   | `false`                   | set counter to 0                                                 |
-| `doDelete`    | `-D` or `-delete`   | `bool`   | `false`                   | delete the counter                                               |
-| `useForce`    | `-F` or `-force`    | `bool`   | `false`                   | enable directories to be created if needed                       |
-| `quantity`    | `-q` or `-quantity` | `int64`  | `1`                       | value to adjust the counter on each execution                    |
-| `showVersion` | `-v` or `-version`  | `bool`   | `false`                   | show the version of the utility                                  |
-| `counterDir`  | `-d` or `-dir`      | `string` | `/tmp/.counters`          | directory to save counters                                       |
-| `counterFile` | `-f` or `-file`     | `string` | `/tmp/.counters/default`  | path to counter file                                             |
-| `counterName` | `-n` or `-name`     | `string` | `default`                 | name of the counter                                              |
+    git clone git@github.com:andreimerlescu/counter.git
+    cd counter
+    make install
 
+Windows builds compile but are untested.
 
-## Environment Variables
+## Quick start
 
-| Variable                 | Default Value | Expected Value                                      | Anticipated Action                                                | 
-|--------------------------|---------------|-----------------------------------------------------|-------------------------------------------------------------------|
-| `COUNTER_USE_FORCE`      | `<unset>`     | `1`                                                 | Creates required directories that do not exist.                   | 
-| `COUNTER_DIR`            | `<unset>`     | `[A-Za-z0-9._+/]+{3,69}`                            | Path to directory where counters are saved.                       |
-| `COUNTER_NEVER_DELETE`   | `<unset>`     | `1`                                                 | Prevent os.Remove() from deleting files or directories.           |
-| `COUNTER_NEVER_SET_TO`   | `<unset>`     | `1`                                                 | Prevent -S or -set usage on the counters.                         |
-| `COUNTER_NEVER_SUBTRACT` | `<unset>`     | `1`                                                 | Enable positive growth only counters.                             | 
-| `COUNTER_NEVER_ADD`      | `<unset>`     | `1`                                                 | Enable negative growth only counters.                             |
-| `COUNTER_NEVER_RESET`    | `<unset>`     | `1`                                                 | Prevent a counter from getting reset.                             |
-| `COUNTER_QUANTITY`       | `<unset>`     | `[0-9]` (valid from math.MinInt64 to math.MaxInt64) | Adjust the quantity to increase/decrease upon -add/-sub requests. | 
-| `COUNTER_ALWAYS_YES`     | `<unset>`     | `1`                                                 | Always pass -yes=true to every counter command.                   |
+    $ counter -n subscribers
+    Error: directory /tmp/.counters does not exist (use -force to create it)
+    $ counter -n subscribers -F          # create the counter directory
+    0
+    $ counter -n subscribers -add
+    1
+    $ counter -n subscribers -add -q 5
+    6
+    $ counter -n subscribers -sub
+    5
+    $ counter -n subscribers -set 20
+    20
+    $ counter -n subscribers -set 0
+    0
+    $ counter -n subscribers -reset
+    Error: refusing to reset counter subscribers without -yes
+    $ counter -n subscribers -reset -yes
+    0
+    $ counter -n subscribers -delete -yes
+    counter subscribers deleted
+    $ counter -n subscribers             # a missing counter reads as 0
+    0
 
-## Common Argument Combinations
+A counter that doesn't exist yet reads as `0`, and the first `-add`, `-sub`, or
+`-set` creates it.
 
-### Create a locked down environment
+## Flags
 
-1. Edit your `~/.bashrc` or `~/.zshrc` file to add: 
+Every flag has a short and a long form. `-q 5`, `-q=5`, and `-quantity 5` are
+all equivalent.
 
-    ```bash
+### Choosing a counter
+
+| Short | Long     | Type   | Default          | Description                                                  |
+|-------|----------|--------|------------------|--------------------------------------------------------------|
+| `-n`  | `-name`  | string |                  | Counter name, stored as a file of that name inside `-dir`    |
+| `-f`  | `-file`  | string |                  | Counter file path; relative paths are resolved inside `-dir` |
+| `-d`  | `-dir`   | string | `/tmp/.counters` | Directory that holds counters                                |
+| `-F`  | `-force` | bool   | `false`          | Create the directory if it does not exist                    |
+
+Exactly one of `-name` or `-file` is required for counter operations. Using both
+is an error.
+
+### Operations
+
+Only one operation is allowed per command. Combining them, such as `-add -sub`,
+is an error and leaves the counter unchanged. With no operation, `counter`
+prints the current value.
+
+| Short | Long        | Type  | Default | Description                                       |
+|-------|-------------|-------|---------|---------------------------------------------------|
+| `-a`  | `-add`      | bool  | `false` | Add `-q` to the counter                           |
+| `-s`  | `-sub`      | bool  | `false` | Subtract `-q` from the counter                    |
+| `-q`  | `-quantity` | int64 | `1`     | Amount used by `-add` and `-sub`; may be negative |
+| `-S`  | `-set`      | int64 |         | Set the counter to this value, including `0`      |
+| `-R`  | `-reset`    | bool  | `false` | Reset the counter to 0 (requires `-yes`)          |
+| `-D`  | `-delete`   | bool  | `false` | Delete the counter (requires `-yes`)              |
+| `-y`  | `-yes`      | bool  | `false` | Confirm `-reset` and `-delete`                    |
+
+Arithmetic saturates at the int64 limits instead of wrapping. Adding to
+`9223372036854775807` leaves it at `9223372036854775807`.
+
+### Listing and searching
+
+| Short | Long      | Type   | Description                                                    |
+|-------|-----------|--------|----------------------------------------------------------------|
+| `-l`  | `-list`   | bool   | List every counter in `-dir` with its value                    |
+| `-g`  | `-search` | string | List counters whose name contains this text (case-insensitive) |
+
+### Information
+
+| Short | Long       | Description                              |
+|-------|------------|------------------------------------------|
+| `-v`  | `-version` | Print the version                        |
+| `-h`  | `-help`    | Print help to stderr                     |
+|       | `-usage`   | Print help to stdout                     |
+|       | `-env`     | Print the effective environment settings |
+
+## Listing and searching counters
+
+    $ counter -l
+    Subscriptions	1000
+    errors	-3
+    visits	7
+    $ counter -g sub
+    Subscriptions	1000
+    $ counter -g nothing-matches; echo "exit $?"
+    exit 1
+
+Output is one counter per line, `name<TAB>value`, sorted by name, which makes
+it easy to process:
+
+    counter -l | sort -t$'\t' -k2 -n        # sort by value
+    counter -l | cut -f1                     # names only
+    counter -g deploy >/dev/null && echo "found deploy counters"
+
+A few details:
+
+- `-search` exits with status 1 when nothing matches, like `grep`. `-list` on an
+  empty directory exits 0.
+- Only the top level of `-dir` is listed. Counters in subdirectories, or at
+  absolute `-file` paths elsewhere, are not shown.
+- Files in the directory that don't contain a counter value are skipped with a
+  warning on stderr.
+- Listing never creates the directory, even with `-force`, so a mistyped `-dir`
+  is reported as an error.
+- `-list` and `-search` cannot be combined with `-name`, `-file`, or an
+  operation.
+
+## Environment variables
+
+Environment variables set defaults. Flags given on the command line always take
+precedence.
+
+| Variable                 | Type    | Effect               |
+|--------------------------|---------|----------------------|
+| `COUNTER_DIR`            | string  | Default for `-dir`   |
+| `COUNTER_QUANTITY`       | int64   | Default for `-q`     |
+| `COUNTER_USE_FORCE`      | boolean | Default for `-force` |
+| `COUNTER_ALWAYS_YES`     | boolean | Default for `-yes`   |
+| `COUNTER_NEVER_ADD`      | boolean | Refuse `-add`        |
+| `COUNTER_NEVER_SUBTRACT` | boolean | Refuse `-sub`        |
+| `COUNTER_NEVER_SET_TO`   | boolean | Refuse `-set`        |
+| `COUNTER_NEVER_RESET`    | boolean | Refuse `-reset`      |
+| `COUNTER_NEVER_DELETE`   | boolean | Refuse `-delete`     |
+
+Booleans accept `1`, `t`, `true`, `0`, `f`, and `false`, in any case. An invalid
+value, such as `COUNTER_QUANTITY=abc` or `COUNTER_USE_FORCE=yes`, is an error
+and nothing is changed.
+
+    $ export COUNTER_QUANTITY=3
+    $ counter -n threes -add
+    3
+    $ counter -n threes -add -q 1        # the flag wins
+    4
+    $ counter -env
+    COUNTER_DIR=/tmp/.counters
+    COUNTER_QUANTITY=3
+    COUNTER_USE_FORCE=false
+    COUNTER_ALWAYS_YES=false
+    COUNTER_NEVER_ADD=false
+    COUNTER_NEVER_SUBTRACT=false
+    COUNTER_NEVER_SET_TO=false
+    COUNTER_NEVER_RESET=false
+    COUNTER_NEVER_DELETE=false
+
+### Guarded counters
+
+The `COUNTER_NEVER_*` variables turn an operation into an error, which is useful
+for counters that should only ever grow:
+
+    export COUNTER_NEVER_SUBTRACT=1
+    export COUNTER_NEVER_SET_TO=1
     export COUNTER_NEVER_RESET=1
     export COUNTER_NEVER_DELETE=1
-    export COUNTER_NEVER_SET_TO=1
-    ```
 
-2. Begin interacting with your locked down `counter`:
+With those set:
 
-    ```bash
-    { [ -f ~/.bashrc ] && source ~/.bashrc; } || { [ -f ~/.zshrc ] && source ~/.zshrc; }
-    counter -h
-    ```
+    $ counter -n visits -sub
+    Error: -sub is disabled by COUNTER_NEVER_SUBTRACT
+    $ counter -n visits -add
+    1
 
-### Using Counters Commonly
+These are guardrails against mistakes, not a security boundary. Anyone who can
+run `counter` can unset the variables or edit the counter file directly.
 
-```bash
-[q@localhost]~% counter -v
-1.0.1
-[q@localhost]~% counter -env
-COUNTER_USE_FORCE=false
-COUNTER_NEVER_ADD=false
-COUNTER_NEVER_RESET=false
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-[q@localhost]~% counter -name subscribers 
-Error: directory /tmp/.counters does not exist
-[q@localhost]~% counter -name subscribers -F
-0
-[q@localhost]~% counter -name subscribers   
-0
-[q@localhost]~% counter -name subscribers -add
-1
-[q@localhost]~% counter -name subscribers -sub
-0
-[q@localhost]~% counter -name subscribers -set 20
-20
-[q@localhost]~% counter -name subscribers -reset 
-will reset counter subscribers to 0 after you re-run with -yes
-[q@localhost]~% counter -name subscribers -reset -yes
-0
-[q@localhost]~% counter -name subscribers            
-0
-[q@localhost]~% counter -name subscribers -delete
-deleting counter subscribers (0) when you re-run with -yes
-[q@localhost]~% counter -name subscribers -delete -yes
-counter subscribers deleted
-```
+## Exit codes
 
-### Using Counter Overrides
+| Code | Meaning                                                                 |
+|------|-------------------------------------------------------------------------|
+| `0`  | Success                                                                 |
+| `1`  | The operation failed or was refused, or `-search` found no matches      |
+| `2`  | Invalid flags, unexpected arguments, or an invalid environment variable |
 
-```bash
-[q@localhost]~% counter -env
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-COUNTER_USE_FORCE=false
-COUNTER_NEVER_ADD=false
-COUNTER_NEVER_RESET=false
-[q@localhost]~% export COUNTER_NEVER_DELETE=1
-[q@localhost]~% counter -name subscribers -delete -yes
-Error: never delete enabled
-[q@localhost]~% unset COUNTER_NEVER_DELETE
-[q@localhost]~% counter -name subscribers -delete -yes
-Error: remove /tmp/.counters/.named.d0f7111ea4066b9f7cd0f5dd.counter: no such file or directory
-counter subscribers deleted
-[q@localhost]~% counter -name subscribers             
-0
-[q@localhost]~% counter -name subscribers -delete -yes
-Error: remove /tmp/.counters/.named.d0f7111ea4066b9f7cd0f5dd.counter: no such file or directory
-counter subscribers deleted
-[q@localhost]~% counter -name subscribers -add        
-1
-[q@localhost]~% counter -name subscribers -add
-2
-[q@localhost]~% counter -name subscribers -add
-3
-[q@localhost]~% counter -name subscribers -add
-4
-[q@localhost]~% counter -name subscribers     
-4
-[q@localhost]~% counter -name subscribers -delete -yes
-counter subscribers deleted
-[q@localhost]~% export COUNTER_QUANTITY=3
-[q@localhost]~% counter -name subscribers -reset -yes
-0
-[q@localhost]~% counter -name subscribers -add       
-3
-[q@localhost]~% counter -name subscribers -add
-6
-[q@localhost]~% counter -name subscribers -add
-9
-[q@localhost]~% counter -name subscribers -sub
-6
-[q@localhost]~% counter -name subscribers -sub
-3
-[q@localhost]~% counter -name subscribers -reset -yes 
-0
-[q@localhost]~% unset COUNTER_QUANTITY
-[q@localhost]~% export COUNTER_NEVER_ADD=1 
-[q@localhost]~% counter -name subscribers 
-0
-[q@localhost]~% counter -name subscribers -add
-0
-[q@localhost]~% counter -name subscribers -sub
--1
-[q@localhost]~% counter -name subscribers -add
--1
-[q@localhost]~% counter -name subscribers -sub
--2
-[q@localhost]~% unset COUNTER_NEVER_ADD 
-[q@localhost]~% counter -name subscribers -add
--1
-[q@localhost]~% counter -name subscribers -add
-0
-[q@localhost]~% export COUNTER_NEVER_SUBTRACT=1
-[q@localhost]~% counter -name subscribers -add 
-1
-[q@localhost]~% counter -name subscribers -sub
-1
-[q@localhost]~% unset COUNTER_NEVER_SUBTRACT
-[q@localhost]~% counter -name subscribers -sub
-0
-[q@localhost]~% export COUNTER_NEVER_RESET=1
-[q@localhost]~% counter -name subscribers -reset 100
-Error: reset operation is disabled by the environment variable
-[q@localhost]~% unset COUNTER_NEVER_RESET
-[q@localhost]~% counter -name subscribers -reset 100
-will reset counter subscribers to 0 after you re-run with -yes
-[q@localhost]~% counter -name subscribers -reset 100 -yes
-will reset counter subscribers to 0 after you re-run with -yes
-```
-## Building
+## Storage
 
-```bash
-git clone git@github.com:andreimerlescu/counter.git
-cd counter
-make install
-counter -h
-```
+- **Location.** A counter named `visits` is stored at `<dir>/visits`. With
+  `-file`, the path is used as given; relative paths are resolved inside
+  `-dir`, and symlinks are followed.
+- **Names.** A name must be a single file name. It can't contain `/` or `\`,
+  can't contain control characters, and can't be `.` or `..`.
+- **Format.** The file holds the value in decimal followed by a newline, so
+  `cat` works on it.
+- **Permissions.** Counter files are created with mode `0600`. Directories
+  created with `-force` get mode `0700`.
+- **Concurrency.** Every read, update, and delete takes a file lock, so
+  concurrent `-add` calls from many processes never lose an update.
+- **Crash safety.** Values are overwritten in place without truncating first,
+  so an interrupted write leaves the old value or the new one, never an empty
+  file.
 
-## Testing
+The default directory, `/tmp/.counters`, is cleared on reboot on many systems,
+and other users on the machine can see it. For counters you care about, point
+`COUNTER_DIR` at a directory you own:
 
-```bash
-go test ./...
-```
+    export COUNTER_DIR="$HOME/.local/state/counters"
+    counter -n visits -F
 
-```log
-=== RUN   TestGenerateCounterFileName
---- PASS: TestGenerateCounterFileName (0.00s)
-=== RUN   TestEnsureDir
---- PASS: TestEnsureDir (0.00s)
-=== RUN   TestReadCounter
---- PASS: TestReadCounter (0.00s)
-=== RUN   TestWriteCounter
---- PASS: TestWriteCounter (0.00s)
-=== RUN   TestSetUnsetImmutable
---- PASS: TestSetUnsetImmutable (0.00s)
-PASS
+## Upgrading from 1.0.x
 
-Process finished with the exit code 0 
-```
+Version 1.1.0 fixes several bugs, and some of those fixes change behavior that
+scripts may depend on:
 
-### Benchmark Performance
+| Before (1.0.x)                                                  | Now (1.1.0)                                                                  |
+|-----------------------------------------------------------------|------------------------------------------------------------------------------|
+| Environment variables overrode flags                            | Flags override environment variables                                         |
+| Booleans in the environment only accepted `1`                   | `1`, `t`, `true`, `0`, `f`, `false` in any case; invalid values are an error |
+| `-set 0` was ignored                                            | `-set 0` sets the counter to 0                                               |
+| `-add` past the int64 limit wrapped to a huge negative number   | It saturates at the limit                                                    |
+| Combined operations (`-add -sub`) were silently merged          | Combined operations are an error                                             |
+| `COUNTER_NEVER_*` silently skipped the operation                | It is an error with a non-zero exit code                                     |
+| `-delete` exited 1 on success, and claimed success on failure   | Exits 0 on success; deleting a missing counter is an error                   |
+| `-name` and `-file` could be combined                           | Using both is an error                                                       |
+| Concurrent updates could lose increments                        | Updates are locked                                                           |
+| Counter files were read-only (`0444`)                           | Files are `0600`; old files are fixed on their next update                   |
+| Counters from 1.0.2 and earlier used hashed file names          | They are moved to plain names automatically on first use                     |
+| `-version` was documented but did not exist                     | `-version` works                                                             |
 
-```log
-goos: linux
-goarch: amd64
-pkg: github.com/andreimerlescu/countable
-cpu: Intel(R) Xeon(R) W-3245 CPU @ 3.20GHz
-BenchmarkWriteCounter
-BenchmarkWriteCounter-9              	  462278	      2263 ns/op
-BenchmarkReadCounter
-BenchmarkReadCounter-9               	  243709	      4764 ns/op
-BenchmarkGenerateCounterFileName
-BenchmarkGenerateCounterFileName-9   	 1956519	       613.6 ns/op
-BenchmarkEnsureDir
-BenchmarkEnsureDir-9                 	   67927	     17570 ns/op
-BenchmarkResolveSymlink
-BenchmarkResolveSymlink-9            	  180133	      6361 ns/op
-PASS
+### Counters created by 1.0.2 and earlier
 
-Process finished with the exit code 0
-```
+Version 1.0.2 and earlier stored named counters under a hashed file name, such
+as `.named.c17be803540fe11391c1714f.counter`. Counter moves these to the new
+layout automatically: the first time you use a counter by name (`-n NAME`),
+its old file is renamed to `NAME` and carries on from its old value. No action
+is needed.
 
-## Try It Out!
+Until a counter has been used by name once, `-list` shows it under its hashed
+file name, because the original name can't be recovered from the hash.
 
-If you have `docker` installed, you can follow along with this log file and try out the application for yourself!
+If a counter exists under both names, for example because you used 1.0.2 and
+then 1.0.3, the plain-name file is used and the hashed file is left untouched.
+Compare the two with `cat` and delete whichever you don't need.
 
-```bash
-docker run -it --rm golang:1.23.0 bash
-root@4ce4c1c426ac:/go# go install github.com/andreimerlescu/counter@latest
-go: downloading github.com/andreimerlescu/counter v1.0.2
-root@4ce4c1c426ac:/go# counter -v
-1.0.2
-root@4ce4c1c426ac:/go# counter -env
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-COUNTER_USE_FORCE=false
-COUNTER_NEVER_ADD=false
-COUNTER_NEVER_RESET=false
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-root@4ce4c1c426ac:/go# export COUNTER_USE_FORCE=1
-root@4ce4c1c426ac:/go# counter -name subscriptions # does not exist 
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -add # now it exists
-1
-root@4ce4c1c426ac:/go# counter -name subscriptions -add                
-2
-root@4ce4c1c426ac:/go# counter -name subscriptions     
-2
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete
-deleting counter subscriptions (2) when you re-run with -yes
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
-counter subscriptions deleted
-root@4ce4c1c426ac:/go# counter -name subscriptions
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete
-deleting counter subscriptions (0) when you re-run with -yes
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
-Error: remove /tmp/.counters/.named.c17be803540fe11391c1714f.counter: no such file or directory
-counter subscriptions deleted
-root@4ce4c1c426ac:/go# # this is normal, as the counter doesn't exist yet
-root@4ce4c1c426ac:/go# counter -name subscriptions -set 1
-1
-root@4ce4c1c426ac:/go# counter -name subscriptions
-1
-root@4ce4c1c426ac:/go# counter -name subscriptions -reset
-will reset counter subscriptions to 0 after you re-run with -yes
-root@4ce4c1c426ac:/go# counter -name subscriptions -reset -yes
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -set 1000
-1000
-root@4ce4c1c426ac:/go# counter -name subscriptions -add     
-1001
-root@4ce4c1c426ac:/go# counter -name subscriptions -sub
-1000
-root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter 
-1000root@4ce4c1c426ac:/go# 
-root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
-1000
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
-counter subscriptions deleted
-root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
-cat: /tmp/.counters/.named.c17be803540fe11391c1714f.counter: No such file or directory
-root@4ce4c1c426ac:/go# counter -name subscriptions -reset -yes 
-0
-root@4ce4c1c426ac:/go# cat /tmp/.counters/.named.c17be803540fe11391c1714f.counter  && echo
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -delete -yes
-counter subscriptions deleted
-root@4ce4c1c426ac:/go# counter -env
-COUNTER_USE_FORCE=true
-COUNTER_NEVER_ADD=false
-COUNTER_NEVER_RESET=false
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-root@4ce4c1c426ac:/go# export COUNTER_NEVER_ADD=1
-root@4ce4c1c426ac:/go# counter -name subscriptions             
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -sub
--1
-root@4ce4c1c426ac:/go# counter -name subscriptions -sub
--2
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
--2
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
--2
-root@4ce4c1c426ac:/go# unset COUNTER_NEVER_ADD
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
--1
-root@4ce4c1c426ac:/go# counter -name subscriptions -add
-0
-root@4ce4c1c426ac:/go# export COUNTER_NEVER_SUBTRACT=1
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-0
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-0
-root@4ce4c1c426ac:/go# counter -name subscription -add
-1
-root@4ce4c1c426ac:/go# counter -name subscription -add
-2
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-2
-root@4ce4c1c426ac:/go# unset COUNTER_NEVER_SUBTRACK
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-2
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-2
-root@4ce4c1c426ac:/go# unset COUNTER_NEVER_SUBTRACT
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-1
-root@4ce4c1c426ac:/go# counter -name subscription -sub
-0
-root@4ce4c1c426ac:/go# counter -env
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-COUNTER_USE_FORCE=true
-COUNTER_NEVER_ADD=false
-COUNTER_NEVER_RESET=false
-root@4ce4c1c426ac:/go# export COUNTER_NEVER_RESET=1
-root@4ce4c1c426ac:/go# counter subscriptions -set 1000
-0
-root@4ce4c1c426ac:/go# counter -name subscriptions -set 1000
-1000
-root@4ce4c1c426ac:/go# counter -name subscription -reset 
-Error: reset operation is disabled by the environment variable
-root@4ce4c1c426ac:/go# unset COUNTER_NEVER_RESET
-root@4ce4c1c426ac:/go# counter -name subscription        
-0
-root@4ce4c1c426ac:/go# counter -name subscription -reset 
-will reset counter subscription to 0 after you re-run with -yes
-root@4ce4c1c426ac:/go# counter -name subscription -reset -yes
-0
-root@4ce4c1c426ac:/go# counter -name subscription -set 1000  
-1000
-root@4ce4c1c426ac:/go# counter -name subscription          
-1000
-root@4ce4c1c426ac:/go# counter -name subscription -reset -yes
-0
-root@4ce4c1c426ac:/go# export COUNTER_QUANTITY=3
-root@4ce4c1c426ac:/go# counter -name threes -add
-3
-root@4ce4c1c426ac:/go# counter -name threes -add
-6
-root@4ce4c1c426ac:/go# counter -name threes -add
-9
-root@4ce4c1c426ac:/go# counter -name threes -sub
-6
-root@4ce4c1c426ac:/go# counter -name threes -sub
-3
-root@4ce4c1c426ac:/go# counter -name threes -reset -yes
-0
-root@4ce4c1c426ac:/go# counter -name threes -add -q 1  
-3
-root@4ce4c1c426ac:/go# counter -name threes -add -q 1
-6
-root@4ce4c1c426ac:/go# unset COUNTER_QUANTITY
-root@4ce4c1c426ac:/go# counter -name threes          
-6
-root@4ce4c1c426ac:/go# counter -name threes -add -q 1
-7
-root@4ce4c1c426ac:/go# counter -name threes -add -q 2
-9
-root@4ce4c1c426ac:/go# counter -name threes -add -q 3
-12
-root@4ce4c1c426ac:/go# counter -name threes -add -q 6
-18
-root@4ce4c1c426ac:/go# counter -name threes -add -q 9
-27
-root@4ce4c1c426ac:/go# counter -name threes -sub -q 22
-5
-root@4ce4c1c426ac:/go# counter -name threes -reset -yes
-0
-root@4ce4c1c426ac:/go# counter -env
-COUNTER_NEVER_RESET=false
-COUNTER_NEVER_DELETE=false
-COUNTER_NEVER_SET_TO=false
-COUNTER_NEVER_SUBTRACT=false
-COUNTER_DIR=/tmp/.counters
-COUNTER_QUANTITY=1
-COUNTER_USE_FORCE=true
-COUNTER_NEVER_ADD=false
-root@4ce4c1c426ac:/go# export COUNTER_NEVER_DELETE=1
-root@4ce4c1c426ac:/go# counter -name threes -delete -yes
-Error: never delete enabled
-root@4ce4c1c426ac:/go# counter -name threes -delete     
-deleting counter threes (0) when you re-run with -yes
-root@4ce4c1c426ac:/go# counter -name threes        
-0
-root@4ce4c1c426ac:/go# unset COUNTER_NEVER_DELETE
-```
+Avoid running a 1.0.x binary and 1.1.0 against the same counters at the same
+time. The old binary doesn't lock files and writes to the hashed names.
+
+## Development
+
+    go test ./...          # full suite, including multi-process concurrency tests
+    go test -short ./...   # skips the concurrency tests
+
+The tests run the real CLI end to end. The test binary re-executes itself as
+`counter`, so flag parsing, environment handling, file locking, legacy
+migration, and exit codes are all covered.

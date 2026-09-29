@@ -191,8 +191,8 @@ func TestVersionFlags(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("exit %d, stderr: %s", r.code, strings.TrimSpace(r.stderr))
 			}
-			if got := strings.TrimSpace(r.stdout); got != BinaryVersion() {
-				t.Errorf("want %q, got %q", BinaryVersion(), got)
+			if got := strings.TrimSpace(r.stdout); got != VERSION {
+				t.Errorf("want %q, got %q", VERSION, got)
 			}
 		})
 	}
@@ -499,20 +499,17 @@ func TestUnwritableDirFails(t *testing.T) {
 // Concurrency
 // ---------------------------------------------------------------------------
 
-func TestConcurrentIncrementsAreNotLost(t *testing.T) {
-	if testing.Short() {
-		t.Skip("spawns many processes")
-	}
-	dir := t.TempDir()
-	const n = 50
-
+// runConcurrently runs the same counter command n times in parallel and
+// reports every failure.
+func runConcurrently(t *testing.T, n int, args ...string) {
+	t.Helper()
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r, err := execCounter(nil, named(dir, "hits", "-add")...)
+			r, err := execCounter(nil, args...)
 			if err != nil {
 				errs <- err
 				return
@@ -525,8 +522,18 @@ func TestConcurrentIncrementsAreNotLost(t *testing.T) {
 	wg.Wait()
 	close(errs)
 	for err := range errs {
-		t.Errorf("concurrent -add failed: %v", err)
+		t.Errorf("concurrent %v failed: %v", args, err)
 	}
+}
+
+func TestConcurrentIncrementsAreNotLost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns many processes")
+	}
+	dir := t.TempDir()
+	const n = 50
+
+	runConcurrently(t, n, named(dir, "hits", "-add")...)
 
 	if got := readValue(t, dir, "hits"); got != n {
 		t.Errorf("want %d after %d concurrent increments, got %d (lost updates)", n, n, got)
@@ -764,6 +771,23 @@ func TestSearch(t *testing.T) {
 	})
 }
 
+func TestListAndSearchShorthands(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir, "visits", 7)
+	seed(t, dir, "subtotal", 5)
+
+	if got, want := mustRun(t, nil, "-d", dir, "-l").stdout, mustRun(t, nil, "-d", dir, "-list").stdout; got != want {
+		t.Errorf("-l: want %q, got %q", want, got)
+	}
+	if got, want := mustRun(t, nil, "-d", dir, "-g", "sub").stdout, mustRun(t, nil, "-d", dir, "-search", "sub").stdout; got != want {
+		t.Errorf("-g: want %q, got %q", want, got)
+	}
+	// -s still means subtract, not search.
+	if got := mustRun(t, nil, named(dir, "visits", "-s")...).value(t); got != 6 {
+		t.Errorf("-s should subtract: want 6, got %d", got)
+	}
+}
+
 func TestListConflictsRejected(t *testing.T) {
 	dir := t.TempDir()
 	seed(t, dir, "x", 5)
@@ -782,6 +806,139 @@ func TestListConflictsRejected(t *testing.T) {
 				t.Errorf("counter modified: want 5, got %d", got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Legacy (1.0.2 and earlier) hashed counter files
+// ---------------------------------------------------------------------------
+
+// writeLegacy creates a counter the way 1.0.x left it: hashed name, no
+// trailing newline, read-only.
+func writeLegacy(t testing.TB, dir, name, contents string) string {
+	t.Helper()
+	p := filepath.Join(dir, legacyFileName(name))
+	if err := os.WriteFile(p, []byte(contents), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func assertGone(t testing.TB, path string) {
+	t.Helper()
+	if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("%s should have been removed (err=%v)", filepath.Base(path), err)
+	}
+}
+
+// If this ever changes, counters from 1.0.2 and earlier stop migrating.
+func TestLegacyFileName(t *testing.T) {
+	if got := legacyFileName("myCounter"); got != ".named.893e3b29586bf2531a893d15.counter" {
+		t.Errorf("legacy file name changed: %s", got)
+	}
+}
+
+func TestLegacyCounterIsAdoptedSilently(t *testing.T) {
+	dir := t.TempDir()
+	legacy := writeLegacy(t, dir, "myCounter", "42")
+
+	r := mustRun(t, nil, named(dir, "myCounter")...)
+	if r.stdout != "42\n" {
+		t.Errorf("want the legacy value on stdout, got %q", r.stdout)
+	}
+	if r.stderr != "" {
+		t.Errorf("migration should be silent, got stderr %q", r.stderr)
+	}
+	assertGone(t, legacy)
+
+	file := soleFile(t, dir)
+	if filepath.Base(file) != "myCounter" {
+		t.Errorf("want the counter under its plain name, got %s", filepath.Base(file))
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("migrated file should be 0600, got %#o", perm)
+	}
+	if got := mustRun(t, nil, named(dir, "myCounter", "-add")...).value(t); got != 43 {
+		t.Errorf("-add after migration: want 43, got %d", got)
+	}
+}
+
+func TestLegacyCounterIsAdoptedByEveryOperation(t *testing.T) {
+	cases := []struct {
+		args   []string
+		stdout string
+	}{
+		{[]string{"-add"}, "43\n"},
+		{[]string{"-sub"}, "41\n"},
+		{[]string{"-S=7"}, "7\n"},
+		{[]string{"-reset", "-yes"}, "0\n"},
+		{[]string{"-delete", "-yes"}, "counter old deleted\n"},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			legacy := writeLegacy(t, dir, "old", "42")
+
+			r := mustRun(t, nil, named(dir, "old", tc.args...)...)
+			if r.stdout != tc.stdout {
+				t.Errorf("want %q, got %q", tc.stdout, r.stdout)
+			}
+			if r.stderr != "" {
+				t.Errorf("migration should be silent, got stderr %q", r.stderr)
+			}
+			assertGone(t, legacy)
+		})
+	}
+}
+
+func TestLegacyDoesNotReplaceNewerCounter(t *testing.T) {
+	dir := t.TempDir()
+	seed(t, dir, "c", 7) // created under the plain name, e.g. by 1.0.3
+	legacy := writeLegacy(t, dir, "c", "42")
+
+	if got := readValue(t, dir, "c"); got != 7 {
+		t.Errorf("plain-name counter should win: want 7, got %d", got)
+	}
+	data, err := os.ReadFile(legacy)
+	if err != nil || string(data) != "42" {
+		t.Errorf("a distinct legacy file must be left untouched: data=%q err=%v", data, err)
+	}
+}
+
+func TestInterruptedLegacyMigrationIsFinished(t *testing.T) {
+	dir := t.TempDir()
+	legacy := writeLegacy(t, dir, "c", "42")
+	// Simulate a crash after linking but before removing the legacy name.
+	if err := os.Link(legacy, filepath.Join(dir, "c")); err != nil {
+		t.Skipf("hard links not supported here: %v", err)
+	}
+
+	if got := readValue(t, dir, "c"); got != 42 {
+		t.Errorf("want 42, got %d", got)
+	}
+	assertGone(t, legacy)
+	soleFile(t, dir)
+}
+
+func TestConcurrentLegacyAdoption(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns many processes")
+	}
+	dir := t.TempDir()
+	writeLegacy(t, dir, "hits", "100")
+	const n = 20
+
+	runConcurrently(t, n, named(dir, "hits", "-add")...)
+
+	if got := readValue(t, dir, "hits"); got != 100+n {
+		t.Errorf("want %d, got %d (increments lost during migration)", 100+n, got)
+	}
+	if filepath.Base(soleFile(t, dir)) != "hits" {
+		t.Errorf("legacy file should be gone after migration")
 	}
 }
 
@@ -857,19 +1014,8 @@ func BenchmarkReadCounter(b *testing.B) {
 	}
 }
 
-func TestListAndSearchShorthands(t *testing.T) {
-	dir := t.TempDir()
-	seed(t, dir, "visits", 7)
-	seed(t, dir, "subtotal", 5)
-
-	if got, want := mustRun(t, nil, "-d", dir, "-l").stdout, mustRun(t, nil, "-d", dir, "-list").stdout; got != want {
-		t.Errorf("-l: want %q, got %q", want, got)
-	}
-	if got, want := mustRun(t, nil, "-d", dir, "-g", "sub").stdout, mustRun(t, nil, "-d", dir, "-search", "sub").stdout; got != want {
-		t.Errorf("-g: want %q, got %q", want, got)
-	}
-	// -s still means subtract, not search.
-	if got := mustRun(t, nil, named(dir, "visits", "-s")...).value(t); got != 6 {
-		t.Errorf("-s should subtract: want 6, got %d", got)
+func BenchmarkLegacyFileName(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		legacyFileName("BenchmarkLegacyFileName")
 	}
 }

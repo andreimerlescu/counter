@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 )
 
 const (
+	VERSION           = "1.1.0"
 	DefaultCounterDir = "/tmp/.counters"
 	DefaultQuantity   = int64(1)
 
@@ -84,7 +87,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	switch {
 	case c.showVersion:
-		fmt.Fprintln(stdout, BinaryVersion())
+		fmt.Fprintln(stdout, VERSION)
 		return 0
 	case c.showUsage:
 		flags.SetOutput(stdout)
@@ -203,19 +206,19 @@ func (c *config) flagSet(output io.Writer) *flag.FlagSet {
 	boolPair("D", "delete", &c.del, "delete the counter (requires -yes)")
 	boolPair("F", "force", &c.force, "create -dir if it does not exist")
 	boolPair("y", "yes", &c.yes, "confirm -reset and -delete")
+	boolPair("l", "list", &c.list, "list counters in -dir with their values")
+	stringPair("g", "search", &c.search, "list counters in -dir whose name contains this text (case-insensitive)")
 	boolPair("v", "version", &c.showVersion, "print the version")
 	flags.BoolVar(&c.showUsage, "usage", false, "print this help to stdout")
 	flags.BoolVar(&c.showEnv, "env", false, "print the effective environment settings")
-	boolPair("l", "list", &c.list, "list counters in -dir with their values")
-	stringPair("g", "search", &c.search, "list counters in -dir whose name contains this text (case-insensitive)")
 
 	// Usage is generated from the registered flags, so it cannot drift.
 	flags.Usage = func() {
 		w := flags.Output()
-		fmt.Fprintf(w, "counter %s: a persistent integer counter stored in a file\n\n", BinaryVersion())
+		fmt.Fprintf(w, "counter %s: a persistent integer counter stored in a file\n\n", VERSION)
 		fmt.Fprint(w, "Usage:\n"+
 			"  counter (-n NAME | -f FILE) [-add | -sub | -set N | -reset | -delete] [options]\n"+
-			"  counter [-l | -list] [(-g | -search) TEXT] [-dir DIR]\n\n")
+			"  counter (-list | -search TEXT) [-dir DIR]\n\n")
 		fmt.Fprint(w, "Flags:\n")
 		flags.PrintDefaults()
 		fmt.Fprint(w, "\nEnvironment (flags take precedence; booleans accept 1/0 or true/false):\n")
@@ -347,10 +350,75 @@ func (c *config) counterPath() (path, label string, err error) {
 	if err := ensureDir(filepath.Dir(path), c.force); err != nil {
 		return "", "", err
 	}
+	if c.name != "" {
+		path = adoptLegacyCounter(c.dir, c.name, path)
+	}
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved
 	}
 	return path, label, nil
+}
+
+// legacyFileName is the file name that versions up to 1.0.2 used for a
+// counter called name. It exists only to find and migrate those files.
+func legacyFileName(name string) string {
+	hash := sha512.Sum512([]byte(name))
+	x := hex.EncodeToString(hash[:])
+	return ".named." + x[96:99] + x[39:45] + x[63:69] + x[93:99] + x[69:72] + ".counter"
+}
+
+// adoptLegacyCounter silently moves a counter created by version 1.0.2 or
+// earlier from its hashed file name to path, and returns the path to use.
+//
+// The move is a hard link followed by removing the old name, because a link,
+// unlike a rename, never replaces an existing file. That makes it safe when
+// several processes migrate the same counter at once, and it lets an
+// interrupted migration (both names pointing at the same file) be recognized
+// and finished later.
+//
+// If the move isn't possible, the legacy path is returned so the old value
+// is still used rather than silently ignored.
+func adoptLegacyCounter(dir, name, path string) string {
+	legacy := filepath.Join(dir, legacyFileName(name))
+	legacyInfo, err := os.Lstat(legacy)
+	if err != nil || !legacyInfo.Mode().IsRegular() {
+		return path // nothing to migrate: the common case
+	}
+
+	err = os.Link(legacy, path)
+	switch {
+	case err == nil:
+		// Linked; fall through to finish the move.
+
+	case errors.Is(err, fs.ErrExist):
+		// Either an earlier migration was interrupted after linking (same
+		// file), or the counter was also created under its plain name, for
+		// example by 1.0.3 (different file). The plain name wins either way.
+		// The legacy name is dropped only when it's the same file, since a
+		// different file may hold data.
+		if info, statErr := os.Lstat(path); statErr == nil && os.SameFile(info, legacyInfo) {
+			_ = os.Remove(legacy)
+		}
+		return path
+
+	default:
+		// Hard links aren't supported here (FAT, some network filesystems).
+		// Fall back to a rename, but never over an existing counter. Another
+		// process could create path between this check and the rename; that
+		// narrow window is the cost of filesystems without links.
+		if _, statErr := os.Lstat(path); !errors.Is(statErr, fs.ErrNotExist) {
+			return path
+		}
+		if os.Rename(legacy, path) != nil {
+			return legacy
+		}
+		_ = os.Chmod(path, 0o600) // 1.0.x left counter files read-only
+		return path
+	}
+
+	_ = os.Chmod(path, 0o600) // 1.0.x left counter files read-only
+	_ = os.Remove(legacy)     // may already be gone if another process finished first
+	return path
 }
 
 // listCounters prints "name<TAB>value" for every counter in c.dir, sorted by
