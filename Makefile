@@ -16,9 +16,8 @@ all: prepare $(TARGETS)
 
 .PHONY: prepare
 prepare:
-	@go mod tidy
-	@go mod download
-	@find . -type f -name '*.go' -exec gofmt -w {} \;
+	go mod tidy
+	find . -type f -name '*.go' -exec gofmt -w {} \;
 
 .PHONY: coverage
 coverage:
@@ -64,9 +63,9 @@ run: prepare
 
 .PHONY: test
 test: prepare
-	@mkdir -p $(OUTPUTS_DIR)
-	@go test -json  ./... $(ARGS) > $(OUTPUTS_DIR)/tests.json 2> /dev/null
-	@go test ./... $(ARGS)
+	mkdir -p $(OUTPUTS_DIR)
+	go test -json  ./... $(ARGS) > $(OUTPUTS_DIR)/tests.json 2> /dev/null
+	go test ./... $(ARGS)
 
 # Help target
 .PHONY: help
