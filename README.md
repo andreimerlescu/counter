@@ -1,5 +1,7 @@
 # Counter
 
+![Unique](https://counthis.app/github?repository=andreimerlescu/counter&label=Unique) ![Visitors](https://counthis.app/g/qyjy5vwjtjgbjfzy)
+
 A small command-line counter for Linux, macOS, and other Unix systems. Each
 counter is a plain text file holding one integer, so counters survive reboots,
 can be shared between scripts, and are safe to update from many processes at
